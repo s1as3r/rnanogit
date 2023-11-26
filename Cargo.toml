@@ -1,0 +1,11 @@
+[package]
+name = "rgit"
+version = "0.1.0"
+edition = "2021"
+authors = ["Arbaaz Shafiq <arbaazshafiq@gmail.com>"]
+
+[dependencies]
+anyhow = "1.0.75"
+flate2 = "1.0.28"
+hex = "0.4.3"
+sha1 = "0.10.6"

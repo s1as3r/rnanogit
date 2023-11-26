@@ -1,0 +1,8 @@
+dummy_git
+
+Cargo.lock
+
+**/*.rs.bk
+
+debug/
+/target
