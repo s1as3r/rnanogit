@@ -1,3 +1,5 @@
+mod util;
+
 use std::{fs, path::PathBuf};
 
 use anyhow::Result;
@@ -40,36 +42,5 @@ impl TryFrom<&str> for Hash {
 impl ToString for Hash {
     fn to_string(&self) -> String {
         hex::encode(&self.0)
-    }
-}
-
-mod util {
-    use anyhow::Result;
-    use flate2::{
-        write::{ZlibDecoder, ZlibEncoder},
-        Compression,
-    };
-    use sha1::{Digest, Sha1};
-    use std::io::Write;
-
-    pub fn zip<T: AsRef<[u8]>>(content: T) -> Result<Vec<u8>> {
-        let mut e = ZlibEncoder::new(Vec::new(), Compression::default());
-        e.write_all(content.as_ref())?;
-        Ok(e.finish()?)
-    }
-
-    pub fn uzip<T: AsRef<[u8]>>(content: T) -> Result<Vec<u8>> {
-        let mut d = ZlibDecoder::new(Vec::new());
-        d.write_all(content.as_ref())?;
-
-        Ok(d.finish()?)
-    }
-
-    pub fn sha1_sum<T: AsRef<[u8]>>(content: T) -> Vec<u8> {
-        let mut hasher = Sha1::new();
-
-        hasher.update(content);
-
-        hasher.finalize().to_vec()
     }
 }
