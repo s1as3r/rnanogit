@@ -12,7 +12,7 @@ pub fn zip<T: AsRef<[u8]>>(content: T) -> Result<Vec<u8>> {
     Ok(e.finish()?)
 }
 
-pub fn uzip<T: AsRef<[u8]>>(content: T) -> Result<Vec<u8>> {
+pub fn unzip<T: AsRef<[u8]>>(content: T) -> Result<Vec<u8>> {
     let mut d = ZlibDecoder::new(Vec::new());
     d.write_all(content.as_ref())?;
 
