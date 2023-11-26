@@ -10,11 +10,12 @@ struct Git {
 }
 
 impl Git {
-    fn write(&self, obj_type: &str, mut b: Vec<u8>) -> Result<Hash> {
-        b.extend(format!("{obj_type} {}\x00", b.len()).into_bytes());
-        let bz = util::zip(&b)?;
+    fn write(&self, obj_type: &str, b: &[u8]) -> Result<Hash> {
+        let mut bytes = format!("{obj_type} {}\x00", b.len()).into_bytes();
+        bytes.extend(b);
+        let bz = util::zip(&bytes)?;
 
-        let sum = util::sha1_sum(b);
+        let sum = util::sha1_sum(bytes);
         let hash = hex::encode(&sum);
 
         let dir = self.dir.join("objects").join(&hash[..2]);
