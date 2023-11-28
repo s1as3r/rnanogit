@@ -3,18 +3,70 @@ mod util;
 
 use std::{fs, path::PathBuf, time};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 
-struct Git {
+#[derive(Clone)]
+pub struct Hash(Vec<u8>);
+
+pub struct Commit {
+    pub msg: String,
+    pub hash: Hash,
+    pub parent: Option<Hash>,
+    pub tree: Option<Hash>,
+}
+
+pub struct Tree {
+    pub blobs: Vec<Blob>,
+    pub hash: Hash,
+}
+
+pub struct Blob {
+    pub name: String,
+    pub hash: Hash,
+}
+
+pub struct Git {
     // where .git is located
-    dir: PathBuf,
+    pub dir: PathBuf,
     // current branch
-    branch: String,
-    user: String,
-    email: String,
+    pub branch: String,
+    pub user: String,
+    pub email: String,
+}
+
+impl TryFrom<&str> for Hash {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
+        Ok(Self(hex::decode(value.trim()).context("decoding hex")?))
+    }
+}
+
+impl ToString for Hash {
+    fn to_string(&self) -> String {
+        hex::encode(&self.0)
+    }
 }
 
 impl Git {
+    pub fn init(&self) -> Result<()> {
+        let dirs = &[
+            ["objects", "info"],
+            ["objects", "pack"],
+            ["refs", "heads"],
+            ["refs", "tags"],
+        ];
+
+        for [d1, d2] in dirs {
+            fs::create_dir_all(self.dir.join(d1).join(d2))?;
+        }
+        fs::write(
+            self.dir.join("HEAD"),
+            format!("ref: refs/heads/{}", self.branch).into_bytes(),
+        )?;
+        Ok(())
+    }
+
     fn write(&self, obj_type: &str, b: &[u8]) -> Result<Hash> {
         let mut bytes = format!("{obj_type} {}\x00", b.len()).into_bytes();
         bytes.extend(b);
@@ -32,18 +84,37 @@ impl Git {
         Ok(Hash(sum))
     }
 
-    fn add_blob(&self, data: &[u8]) -> Result<Hash> {
+    fn read(&self, obj_type: &str, hash: &Hash) -> Result<Vec<u8>> {
+        let h = hash.to_string();
+        let dir = self.dir.join("objects").join(&h[..2]);
+        let obj = dir.join(&h[2..]);
+
+        let bytes = fs::read(obj)?;
+        let bytes = util::unzip(bytes)?;
+
+        if !bytes.starts_with(&format!("{obj_type} ").into_bytes()) {
+            return Err(anyhow!("not a {obj_type} object"));
+        }
+
+        let n = bytes
+            .iter()
+            .position(|&x| x == 0)
+            .ok_or(anyhow!("invalid {obj_type}"))?;
+        Ok(bytes[n + 1..].to_vec())
+    }
+
+    pub fn add_blob(&self, data: &[u8]) -> Result<Hash> {
         self.write("blob", data)
     }
 
-    fn add_tree(&self, filename: &str, filedata: &[u8]) -> Result<Hash> {
+    pub fn add_tree(&self, filename: &str, filedata: &[u8]) -> Result<Hash> {
         let hash = self.add_blob(filedata)?;
         let mut content = format!("100644 {filename}\x00").into_bytes();
         content.extend(&hash.0);
         self.write("tree", &content)
     }
 
-    fn add_commit(
+    pub fn add_commit(
         &self,
         filename: &str,
         data: &[u8],
@@ -80,42 +151,24 @@ impl Git {
         Ok(b)
     }
 
-    fn set_head(&self, hash: &Hash) -> Result<()> {
+    pub fn set_head(&self, hash: &Hash) -> Result<()> {
         let filepath = self.dir.join("ref").join("heads").join(&self.branch);
         fs::write(filepath, hash.to_string().into_bytes())?;
         Ok(())
     }
 
-    fn head(&self) -> Result<Hash> {
-        let b = fs::read_to_string(self.dir.join("refs").join("heads").join(&self.branch))?;
+    pub fn head(&self) -> Result<Hash> {
+        let b = fs::read_to_string(self.dir.join("refs").join("heads").join(&self.branch))
+            .context("reading dir/refs/heads/branch")?;
 
-        Hash::try_from(b.as_str())
+        Hash::try_from(b.as_str()).context("conversion")
     }
 
-    fn read(&self, obj_type: &str, hash: &Hash) -> Result<Vec<u8>> {
-        let h = hash.to_string();
-        let dir = self.dir.join("objects").join(&h[..2]);
-        let obj = dir.join(&h[2..]);
-
-        let bytes = fs::read(obj)?;
-        let bytes = util::unzip(bytes)?;
-
-        if !bytes.starts_with(&format!("{obj_type} ").into_bytes()) {
-            return Err(anyhow!("not a {obj_type} object"));
-        }
-
-        let n = bytes
-            .iter()
-            .position(|&x| x == 0)
-            .ok_or(anyhow!("invalid {obj_type}"))?;
-        Ok(bytes[n + 1..].to_vec())
-    }
-
-    fn blob(&self, hash: &Hash) -> Result<Vec<u8>> {
+    pub fn blob(&self, hash: &Hash) -> Result<Vec<u8>> {
         self.read("blob", hash)
     }
 
-    fn tree(&self, hash: &Hash) -> Result<Tree> {
+    pub fn tree(&self, hash: &Hash) -> Result<Tree> {
         let mut b = self.read("tree", hash)?;
         let mut blobs = Vec::new();
 
@@ -139,7 +192,7 @@ impl Git {
         })
     }
 
-    fn commit(&self, hash: &Hash) -> Result<Commit> {
+    pub fn commit(&self, hash: &Hash) -> Result<Commit> {
         let mut commit = Commit {
             msg: "".into(),
             hash: hash.clone(),
@@ -168,43 +221,23 @@ impl Git {
                         String::from_utf8(parts[1].to_vec())?.as_str(),
                     )?);
                 }
-                _ => unreachable!(),
+                _ => continue,
             }
         }
 
         Ok(commit)
     }
-}
 
-struct Commit {
-    msg: String,
-    hash: Hash,
-    parent: Option<Hash>,
-    tree: Option<Hash>,
-}
+    pub fn log(&self) -> Result<Vec<Commit>> {
+        let mut hash = Some(self.head().context("reading head")?);
 
-struct Tree {
-    blobs: Vec<Blob>,
-    hash: Hash,
-}
+        let mut commits = Vec::new();
+        while let Some(ref h) = hash {
+            let ci = self.commit(h)?;
+            hash = ci.parent.clone();
+            commits.push(ci);
+        }
 
-struct Blob {
-    name: String,
-    hash: Hash,
-}
-
-#[derive(Clone)]
-struct Hash(Vec<u8>);
-
-impl TryFrom<&str> for Hash {
-    type Error = anyhow::Error;
-    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
-        Ok(Self(hex::decode(value)?))
-    }
-}
-
-impl ToString for Hash {
-    fn to_string(&self) -> String {
-        hex::encode(&self.0)
+        Ok(commits)
     }
 }

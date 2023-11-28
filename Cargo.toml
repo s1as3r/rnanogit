@@ -1,5 +1,5 @@
 [package]
-name = "rgit"
+name = "rnanogit"
 version = "0.1.0"
 edition = "2021"
 authors = ["Arbaaz Shafiq <arbaazshafiq@gmail.com>"]
