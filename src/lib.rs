@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 mod util;
 
 use std::{fs, path::PathBuf, time};
@@ -26,9 +25,7 @@ pub struct Blob {
 }
 
 pub struct Git {
-    // where .git is located
     pub dir: PathBuf,
-    // current branch
     pub branch: String,
     pub user: String,
     pub email: String,
@@ -121,7 +118,7 @@ impl Git {
         parent_hash: Option<Hash>,
         msg: &str,
     ) -> Result<Hash> {
-        let hash = self.add_tree(filename, data)?;
+        let hash = self.add_tree(filename, data).context("adding hash")?;
 
         let parent = if let Some(p) = parent_hash {
             format!("parent {}\n", p.to_string())
@@ -129,7 +126,7 @@ impl Git {
             String::new()
         };
 
-        let t = time::UNIX_EPOCH.elapsed()?.as_secs();
+        let t = time::UNIX_EPOCH.elapsed().context("time")?.as_secs();
 
         let content = format!(
             "tree {}\n{}author {} <{}> {} +0000\ncommitter {} <{}> {} +0000\n{}\n",
@@ -145,16 +142,17 @@ impl Git {
         )
         .into_bytes();
 
-        let b = self.write("commit", &content)?;
-        self.set_head(&b)?;
+        let b = self.write("commit", &content).context("writing commit")?;
+        self.set_head(&b).context("setting head")?;
 
         Ok(b)
     }
 
     pub fn set_head(&self, hash: &Hash) -> Result<()> {
-        let filepath = self.dir.join("ref").join("heads").join(&self.branch);
-        fs::write(filepath, hash.to_string().into_bytes())?;
-        Ok(())
+        let dir = self.dir.join("ref").join("heads");
+        let filepath = dir.join(&self.branch);
+        fs::create_dir_all(dir).context("creating dir")?;
+        fs::write(filepath, hash.to_string().into_bytes()).context("writing to head")
     }
 
     pub fn head(&self) -> Result<Hash> {

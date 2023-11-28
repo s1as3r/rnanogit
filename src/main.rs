@@ -9,7 +9,7 @@ use rnanogit::Git;
 fn main() -> Result<()> {
     let git = Git {
         dir: ".git".into(),
-        branch: "master".into(),
+        branch: "main".into(),
         user: "rnanogit".into(),
         email: "someemail@rnanogitexample.com".into(),
     };
@@ -33,17 +33,18 @@ fn main() -> Result<()> {
         "ci" => {
             let mut buf = Vec::new();
             io::stdin().read_to_end(&mut buf).context("reading stdin")?;
-            let parent = git.head().context("head")?;
-            let msg = if let Some(msg) = args.nth(2) {
+            let parent = git.head().ok();
+            let msg = if let Some(msg) = args.next() {
                 msg
             } else {
                 "fix".into()
             };
 
-            git.add_commit("file.txt", buf.as_slice(), Some(parent), msg.as_str())?;
+            git.add_commit("file.txt", buf.as_slice(), parent, msg.as_str())
+                .context("adding commit")?;
         }
         "co" => {
-            let hash = args.nth(2).ok_or(anyhow!("expected commit hash"))?;
+            let hash = args.next().ok_or(anyhow!("expected commit hash"))?;
 
             let hist = git.log().context("log")?;
             for h in hist {
