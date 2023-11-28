@@ -129,7 +129,7 @@ impl Git {
         let t = time::UNIX_EPOCH.elapsed().context("time")?.as_secs();
 
         let content = format!(
-            "tree {}\n{}author {} <{}> {} +0000\ncommitter {} <{}> {} +0000\n{}\n",
+            "tree {}\n{}author {} <{}> {} +0000\ncommitter {} <{}> {} +0000\n\n{}\n",
             hash.to_string(),
             parent,
             &self.user,
@@ -149,7 +149,7 @@ impl Git {
     }
 
     pub fn set_head(&self, hash: &Hash) -> Result<()> {
-        let dir = self.dir.join("ref").join("heads");
+        let dir = self.dir.join("refs").join("heads");
         let filepath = dir.join(&self.branch);
         fs::create_dir_all(dir).context("creating dir")?;
         fs::write(filepath, hash.to_string().into_bytes()).context("writing to head")
